@@ -45,7 +45,11 @@ class Nation(aionationstates.Nation):
             cls._nations[nationname] = nation
         else:
             if nation.last_refreshed < datetime.utcnow() - timedelta(minutes=5):
-                await nation.refresh()
+                try:
+                    await nation.refresh()
+                except aionationstates.NotFound:
+                    del cls._nations[nationname]
+                    raise
         return nation
 
     async def refresh(self):
@@ -108,7 +112,8 @@ async def process_happening(happening):
                 recepient.zombies -= impact
         return
 
-    match = re.match('@@(.+?)@@ relocated from %%(.+?)%% to %%(.+?)%%')
+    match = re.match('@@(.+?)@@ relocated from %%(.+?)%% to %%(.+?)%%',
+                     happening.text)
     if match:
         nation = await Nation.grab(match.group(1))
         # Should already be normalized
@@ -141,7 +146,8 @@ async def happening_loop():
         regions=REGION
     )
     async for happening in gen:
-        await process_happening(happening)
+        with suppress(aionationstates.NotFound):
+            await process_happening(happening)
 
 
 async def update_loop():
@@ -149,7 +155,8 @@ async def update_loop():
     first = True
     while True:
         for nationname in await aionationstates.region(REGION).nations():
-            await Nation.grab(nationname)
+            with suppress(aionationstates.NotFound):
+                await Nation.grab(nationname)
             if not first:
                 # We want to gather data quickly during the first run, so the
                 # ratelimit only kicks in on the second and up.
