@@ -1,5 +1,7 @@
 import re
 import random
+import shelve
+import asyncio
 from datetime import datetime, timedelta
 from asyncio import sleep
 
@@ -17,7 +19,7 @@ class Nation(aionationstates.Nation):
     """Main interface for our fellow Z-Day participants, who happen to
     be all our regional population plus a teensy bit more.
     """
-    _nations = {}
+    _nations = None
     _cure_target = None
 
     def __init__(self, nationname):
@@ -168,6 +170,16 @@ def exterminate_target(request):
 if __name__ == '__main__':
     aionationstates.set_user_agent(
         "Kethania's Z-Day script -- Really sorry for all the requests!")
-    app.add_task(supervisor(happening_loop))
-    app.add_task(supervisor(update_loop))
-    app.run(port=5000)
+    shelf = shelve.open('known_nation_cache')
+    Nation._nation = shelf
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(asyncio.gather(
+            supervisor(happening_loop),
+            supervisor(update_loop),
+            app.create_server(port=5000)
+        ))
+    finally:
+        loop.stop()
+        loop.close()
+        shelf.close()
