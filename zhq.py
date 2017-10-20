@@ -10,7 +10,7 @@ from sanic.response import redirect
 
 app = Sanic(__name__)
 
-REGION = aionationstates.utils.normalize('the communist bloc')
+REGION = aionationstates.normalize('the communist bloc')
 
 
 class Nation(aionationstates.Nation):
@@ -30,12 +30,13 @@ class Nation(aionationstates.Nation):
 
         Also implements autorefresh timer logic.
         """
-        nationname = aionationstates.utils.normalize(nationname)
+        nationname = aionationstates.normalize(nationname)
         try:
             nation = cls._nations[nationname]
         except KeyError:
-            nation = cls._nations[nationname] = cls(nationname)
+            nation = cls(nationname)
             await nation.refresh()
+            cls._nations[nationname] = nation
         else:
             if nation.last_refreshed < datetime.utcnow() - timedelta(minutes=5):
                 await nation.refresh()
@@ -57,20 +58,22 @@ class Nation(aionationstates.Nation):
 
     @classmethod
     def cure_target(cls):
-        if cls._cure_target.zombies < 40:
+        if cls._cure_target is None or cls._cure_target.zombies < 40:
             cls._cure_target = max(
-                (n for n in cls._nations if not n.is_export),
+                (n for n in cls._nations.values() if not n.is_export),
                 key=lambda n: n.zombies
             )
         return cls._cure_target
 
     @classmethod
     def exterminate_target(cls):
-        return random.choice([
-            n for n in cls._nations
-            if n.is_export
-            and n.zactive_at < datetime.utcnow() - timedelta(minutes=5)
-        ])
+        return random.choice(
+            [
+                n for n in cls._nations.values()
+                if n.is_export
+                and n.zactive_at < datetime.utcnow() - timedelta(minutes=5)
+            ] or [n for n in cls._nations.values() if n.is_export]
+        )
 
 
 async def process_happening(happening):
@@ -125,7 +128,7 @@ async def happening_loop():
         # Ideally, we would also specify a type, but I'm unsure whether
         # Z-Day hapenings will have any.  TODO?
         poll_period=10,
-        region=REGION
+        regions=REGION
     )
     async for happening in gen:
         await process_happening(happening)
