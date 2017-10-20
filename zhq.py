@@ -8,7 +8,7 @@ from asyncio import sleep
 
 import aionationstates
 from sanic import Sanic
-from sanic.response import redirect
+from sanic.response import redirect, text
 
 
 app = Sanic(__name__)
@@ -166,7 +166,11 @@ def cure_target(request):
 
 @app.route('/exterminate')
 def exterminate_target(request):
-    return redirect(Nation.exterminate_target().url)
+    try:
+        return redirect(Nation.exterminate_target().url)
+    except Exception:
+        return text('Seems like there are no nations to exterminate!'
+                    'Try reloading in a few minutes.')
 
 
 if __name__ == '__main__':
