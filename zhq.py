@@ -2,6 +2,7 @@ import re
 import random
 import shelve
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from asyncio import sleep
 
@@ -11,6 +12,8 @@ from sanic.response import redirect
 
 
 app = Sanic(__name__)
+
+logger = logging.getLogger(__name__)
 
 REGION = aionationstates.normalize('the communist bloc')
 
@@ -153,8 +156,7 @@ async def supervisor(coroutine_function):
         try:
             await coroutine_function()
         except Exception:
-            # TODO log
-            pass
+            logger.exception('exception in background process:')
 
 
 @app.route('/cure')
