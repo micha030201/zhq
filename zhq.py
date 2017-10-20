@@ -1,8 +1,9 @@
 import re
 import random
-import shelve
+import pickle
 import asyncio
 import logging
+from contextlib import suppress
 from datetime import datetime, timedelta
 from asyncio import sleep
 
@@ -22,7 +23,7 @@ class Nation(aionationstates.Nation):
     """Main interface for our fellow Z-Day participants, who happen to
     be all our regional population plus a teensy bit more.
     """
-    _nations = None
+    _nations = {}
     _cure_target = None
 
     def __init__(self, nationname):
@@ -157,6 +158,7 @@ async def supervisor(coroutine_function):
             await coroutine_function()
         except Exception:
             logger.exception('exception in background process:')
+            await sleep(5)
 
 
 @app.route('/cure')
@@ -176,8 +178,10 @@ def exterminate_target(request):
 if __name__ == '__main__':
     aionationstates.set_user_agent(
         "Kethania's Z-Day script -- Really sorry for all the requests!")
-    shelf = shelve.open('known_nation_cache')
-    Nation._nation = shelf
+    with suppress(Exception):
+        with open('known_nation_cache', 'rb') as f:
+            Nation._nations = pickle.load(f)
+    print(Nation._nations)
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(asyncio.gather(
@@ -188,4 +192,5 @@ if __name__ == '__main__':
     finally:
         loop.stop()
         loop.close()
-        shelf.close()
+        with open('known_nation_cache', 'wb') as f:
+            pickle.dump(Nation._nations, f)
