@@ -83,16 +83,20 @@ class Nation(aionationstates.Nation):
 
 
 async def process_happening(happening):
-    # Possible happenings: ??? TODO
-    match = re.match(r'@@(.+?)@@ (.+?) @@(.+?)@@ .+? (\d+)', happening.text)
+    # Possible happenings:
+    # @@recepient@@ was struck by a Cure Missile from @@sender@@, curing X million infected.
+    # @@recepient@@ was cleansed by a Tactical Zombie Elimination Squad from @@sender@@, killing X million zombies.
+    # @@recepient@@ was ravaged by a Zombie Horde from @@sender@@, infecting X million survivors.
+    match = re.match(r'@@(.+?)@@ was (.+?) from @@(.+?)@@, .+? (\d+) million',
+                     happening.text)
     if match:
-        sender = await Nation.grab(match.group(1))
-        recepient = await Nation.grab(match.group(3))
+        recepient = await Nation.grab(match.group(1))
+        sender = await Nation.grab(match.group(3))
         action = match.group(2)
         impact = int(match.group(4))
 
         sender.bump_zactive(happening.timestamp)
-        if action == 'something something zombie hordes':
+        if action == 'ravaged by a Zombie Horde':
             if happening.timestamp > sender.refreshed_at:
                 sender.is_export = True
             if happening.timestamp > recepient.refreshed_at:
