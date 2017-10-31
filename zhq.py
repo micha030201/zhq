@@ -15,6 +15,7 @@ from sanic.response import redirect, text
 app = Sanic(__name__)
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler())
 
 REGION = aionationstates.normalize('the communist bloc')
 
@@ -68,7 +69,7 @@ class Nation(aionationstates.Nation):
 
     @classmethod
     def cure_target(cls):
-        if cls._cure_target is None or cls._cure_target.zombies < 40:
+        if cls._cure_target is None or cls._cure_target.zombies < 150:
             cls._cure_target = max(
                 (n for n in cls._nations.values() if not n.is_export),
                 key=lambda n: n.zombies
@@ -81,8 +82,13 @@ class Nation(aionationstates.Nation):
             [
                 n for n in cls._nations.values()
                 if n.is_export
-                and n.zactive_at < datetime.utcnow() - timedelta(minutes=5)
-            ] or [n for n in cls._nations.values() if n.is_export]
+                and n.last_zactive < datetime.utcnow() - timedelta(minutes=5)
+                and n.zombies > 1
+            ] or [
+                n for n in cls._nations.values()
+                if n.is_export
+                and n.zombies > 1
+            ]
         )
 
 
@@ -100,15 +106,18 @@ async def process_happening(happening):
         impact = int(match.group(4))
 
         sender.bump_zactive(happening.timestamp)
-        if action == 'ravaged by a Zombie Horde':
-            if happening.timestamp > sender.refreshed_at:
+        print(action)
+        if action.startswith('ravaged'):
+            print('ravaged')
+            if happening.timestamp > sender.last_refreshed:
                 sender.is_export = True
-            if happening.timestamp > recepient.refreshed_at:
+            if happening.timestamp > recepient.last_refreshed:
                 recepient.zombies += impact
         else:
-            if happening.timestamp > sender.refreshed_at:
+            print('not ravaged')
+            if happening.timestamp > sender.last_refreshed:
                 sender.is_export = False
-            if happening.timestamp > recepient.refreshed_at:
+            if happening.timestamp > recepient.last_refreshed:
                 recepient.zombies -= impact
         return
 
@@ -143,7 +152,7 @@ async def happening_loop():
         # Ideally, we would also specify a type, but I'm unsure whether
         # Z-Day hapenings will have any.  TODO?
         poll_period=10,
-        regions=REGION
+        regions=(REGION,)
     )
     async for happening in gen:
         with suppress(aionationstates.NotFound):
@@ -154,7 +163,11 @@ async def update_loop():
     """Automatically refresh nations not mentioned in happenings."""
     first = True
     while True:
-        for nationname in await aionationstates.region(REGION).nations():
+        nations_to_update = (
+            set(await aionationstates.region(REGION).nations())
+            | set(Nation._nations.keys())
+        )
+        for nationname in nations_to_update:
             with suppress(aionationstates.NotFound):
                 await Nation.grab(nationname)
             if not first:
@@ -168,22 +181,23 @@ async def supervisor(coroutine_function):
         try:
             await coroutine_function()
         except Exception:
+            print('excepton')
             logger.exception('exception in background process:')
             await sleep(5)
 
 
-@app.route('/cure')
+@app.route('/zhq/cure')
 def cure_target(request):
     return redirect(Nation.cure_target().url)
 
 
-@app.route('/exterminate')
+@app.route('/zhq/exterminate')
 def exterminate_target(request):
     try:
         return redirect(Nation.exterminate_target().url)
-    except Exception:
+    except IndexError:
         return text('Seems like there are no nations to exterminate!'
-                    'Try reloading in a few minutes.')
+                    ' Try reloading in a few minutes.')
 
 
 if __name__ == '__main__':
@@ -192,7 +206,6 @@ if __name__ == '__main__':
     with suppress(Exception):
         with open('known_nation_cache', 'rb') as f:
             Nation._nations = pickle.load(f)
-    print(Nation._nations)
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(asyncio.gather(
