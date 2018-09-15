@@ -69,11 +69,29 @@ class Nation(aionationstates.Nation):
 
     @classmethod
     def cure_target(cls):
-        if cls._cure_target is None or cls._cure_target.zombies < 150:
+        if (cls._cure_target is None
+                or cls._cure_target.zombies < 150
+                or cls._cure_target.is_export):
             cls._cure_target = max(
-                (n for n in cls._nations.values() if not n.is_export),
+                (
+                    n for n in cls._nations.values()
+                    if not n.is_export
+                    and (
+                        n.last_zactive >
+                        datetime.utcnow() - timedelta(minutes=30)
+                    )
+                ),
                 key=lambda n: n.zombies
             )
+            if cls._cure_target.zombies < 150:
+                print('sec route')
+                cls._cure_target = max(
+                    (
+                        n for n in cls._nations.values()
+                        if not n.is_export
+                    ),
+                    key=lambda n: n.zombies
+                )
         return cls._cure_target
 
     @classmethod
@@ -82,12 +100,14 @@ class Nation(aionationstates.Nation):
             [
                 n for n in cls._nations.values()
                 if n.is_export
-                and n.last_zactive < datetime.utcnow() - timedelta(minutes=5)
+                and n.last_zactive > datetime.utcnow() - timedelta(minutes=15)
                 and n.zombies > 1
+                and n.is_in_region
             ] or [
                 n for n in cls._nations.values()
                 if n.is_export
                 and n.zombies > 1
+                and n.is_in_region
             ]
         )
 
@@ -173,7 +193,8 @@ async def update_loop():
             if not first:
                 # We want to gather data quickly during the first run, so the
                 # ratelimit only kicks in on the second and up.
-                await sleep(2)
+                await sleep(0)
+    first = False
 
 
 async def supervisor(coroutine_function):
@@ -197,7 +218,8 @@ def exterminate_target(request):
         return redirect(Nation.exterminate_target().url)
     except IndexError:
         return text('Seems like there are no nations to exterminate!'
-                    ' Try reloading in a few minutes.')
+                    ' Try reloading in a few minutes, or switch to'
+                    ' researching the cure.')
 
 
 if __name__ == '__main__':
